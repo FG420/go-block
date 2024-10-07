@@ -4,16 +4,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
-	"os"
 	"runtime"
 
+	"github.com/FG420/go-block/utils"
 	"github.com/dgraph-io/badger"
-)
-
-const (
-	dbPath      = "./tmp/blocks"
-	dbFile      = "./tmp/blocks/MANIFEST"
-	genesisData = "First Transaction from Genesis"
 )
 
 type (
@@ -32,7 +26,7 @@ func (bc *BlockChain) AddBlock(txs []*Transaction) {
 
 	err := bc.Database.View(func(txn *badger.Txn) error {
 		item, err := txn.Get([]byte("lh"))
-		HandleErr(err)
+		utils.HandleErr(err)
 		err = item.Value(func(val []byte) error {
 			lastHash = append(lastHash, val...)
 			return nil
@@ -44,7 +38,7 @@ func (bc *BlockChain) AddBlock(txs []*Transaction) {
 
 	err = bc.Database.Update(func(txn *badger.Txn) error {
 		err = txn.Set(newBlock.Hash, newBlock.Serialize())
-		HandleErr(err)
+		utils.HandleErr(err)
 
 		err = txn.Set([]byte("lh"), newBlock.Hash)
 		bc.LastHash = newBlock.Hash
@@ -55,27 +49,27 @@ func (bc *BlockChain) AddBlock(txs []*Transaction) {
 
 func InitBlockChain(addr string) *BlockChain {
 	var lastHash []byte
-	if DbExist() {
+	if utils.DbExist() {
 		fmt.Println("Blockchain already exists")
 		runtime.Goexit()
 	}
 
-	opt := badger.DefaultOptions(dbPath)
+	opt := badger.DefaultOptions(utils.DbPath)
 	db, err := badger.Open(opt)
-	HandleErr(err)
+	utils.HandleErr(err)
 
 	err = db.Update(func(txn *badger.Txn) error {
-		cbtx := CoinbaseTx(addr, genesisData)
+		cbtx := CoinbaseTx(addr, utils.GenesisData)
 		genesis := Genesis(cbtx)
 		log.Println("Genesis created")
 		err = txn.Set(genesis.Hash, genesis.Serialize())
-		HandleErr(err)
+		utils.HandleErr(err)
 		err = txn.Set([]byte("lh"), genesis.Hash)
 
 		lastHash = genesis.Hash
 		return err
 	})
-	HandleErr(err)
+	utils.HandleErr(err)
 	blockchain := BlockChain{lastHash, db}
 	return &blockchain
 }
@@ -91,7 +85,7 @@ func (iter *BlockChainIterator) Next() *Block {
 	var block *Block
 	err := iter.Database.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(iter.CurrentHash)
-		HandleErr(err)
+		utils.HandleErr(err)
 
 		err = item.Value(func(val []byte) error {
 			block = Deserialize(val)
@@ -100,7 +94,7 @@ func (iter *BlockChainIterator) Next() *Block {
 
 		return nil
 	})
-	HandleErr(err)
+	utils.HandleErr(err)
 
 	iter.CurrentHash = block.PrevHash
 	return block
@@ -108,18 +102,18 @@ func (iter *BlockChainIterator) Next() *Block {
 }
 
 func ContinueBlockChain(addr string) *BlockChain {
-	if !DbExist() {
+	if !utils.DbExist() {
 		fmt.Println("No existring blockchain found, created one!")
 	}
 	var lastHash []byte
 
-	opt := badger.DefaultOptions(dbPath)
+	opt := badger.DefaultOptions(utils.DbPath)
 	db, err := badger.Open(opt)
-	HandleErr(err)
+	utils.HandleErr(err)
 
 	err = db.Update(func(txn *badger.Txn) error {
 		item, err := txn.Get([]byte("lh"))
-		HandleErr(err)
+		utils.HandleErr(err)
 
 		err = item.Value(func(val []byte) error {
 			lastHash = append(lastHash, val...)
@@ -127,7 +121,7 @@ func ContinueBlockChain(addr string) *BlockChain {
 		})
 		return err
 	})
-	HandleErr(err)
+	utils.HandleErr(err)
 
 	chain := BlockChain{lastHash, db}
 	return &chain
@@ -214,11 +208,4 @@ Work:
 	}
 
 	return accumulated, unspentOuts
-}
-
-func DbExist() bool {
-	if _, err := os.Stat(dbFile); os.IsNotExist(err) {
-		return false
-	}
-	return true
 }

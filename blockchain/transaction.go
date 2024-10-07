@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+
+	"github.com/FG420/go-block/utils"
 )
 
 type (
@@ -14,17 +16,6 @@ type (
 		ID      []byte
 		Inputs  []TxInput
 		Outputs []TxOutput
-	}
-
-	TxInput struct {
-		ID        []byte
-		Out       int
-		Signature string
-	}
-
-	TxOutput struct {
-		Value  int
-		PubKey string
 	}
 )
 
@@ -34,7 +25,7 @@ func (tx *Transaction) SetID() {
 
 	encode := gob.NewEncoder(&encoded)
 	err := encode.Encode(tx)
-	HandleErr(err)
+	utils.HandleErr(err)
 
 	hash = sha256.Sum256(encoded.Bytes())
 	tx.ID = hash[:]
@@ -45,9 +36,6 @@ func (tx *Transaction) IsCoinbase() bool {
 		len(tx.Inputs[0].ID) == 0 &&
 		tx.Inputs[0].Out == -1
 }
-
-func (in *TxInput) CanUnlock(data string) bool       { return in.Signature == data }
-func (out *TxOutput) CanBeUnlocked(data string) bool { return out.PubKey == data }
 
 func CoinbaseTx(to, data string) *Transaction {
 	if data == "" {
@@ -75,7 +63,7 @@ func NewTransaction(from, to string, amount int, bc *BlockChain) *Transaction {
 
 	for txid, outs := range validOutputs {
 		txID, err := hex.DecodeString(txid)
-		HandleErr(err)
+		utils.HandleErr(err)
 
 		for _, out := range outs {
 			newInput := TxInput{txID, out, from}

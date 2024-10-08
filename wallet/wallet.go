@@ -1,12 +1,13 @@
 package wallet
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 
-	"github.com/FG420/go-block/utils"
+	"github.com/FG420/go-block/handlers"
 )
 
 const (
@@ -30,6 +31,17 @@ func (w *Wallet) Address() []byte {
 	// fmt.Printf("address: %x\n", addr)
 
 	return addr
+}
+
+func ValidateAddress(addr string) bool {
+	pubKeyHash := Base58Decode([]byte(addr))
+	actualChecksum := pubKeyHash[len(pubKeyHash)-checksumLength:]
+
+	version := pubKeyHash[0]
+	pubKeyHash = pubKeyHash[1 : len(pubKeyHash)-checksumLength]
+	targetChecksum := Checksum(append([]byte{version}, pubKeyHash...))
+
+	return bytes.Compare(actualChecksum, targetChecksum) == 0
 }
 
 func NewPair() (*ecdsa.PrivateKey, []byte, error) {
@@ -57,7 +69,7 @@ func PublicKeyHash(pubKey []byte) []byte {
 
 	hasher := sha256.New()
 	_, err := hasher.Write(pubHash[:])
-	utils.HandleErr(err)
+	handlers.HandleErr(err)
 
 	pubSha := hasher.Sum(nil)
 	return pubSha

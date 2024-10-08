@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/gob"
 
-	"github.com/FG420/go-block/utils"
+	"github.com/FG420/go-block/handlers"
 )
 
 type (
@@ -35,7 +35,7 @@ func (b *Block) Serialize() []byte {
 	encoder := gob.NewEncoder(&res)
 
 	err := encoder.Encode(b)
-	utils.HandleErr(err)
+	handlers.HandleErr(err)
 
 	return res.Bytes()
 }
@@ -46,7 +46,7 @@ func Deserialize(data []byte) *Block {
 	decoder := gob.NewDecoder(bytes.NewReader(data))
 
 	err := decoder.Decode(&block)
-	utils.HandleErr(err)
+	handlers.HandleErr(err)
 
 	return &block
 }

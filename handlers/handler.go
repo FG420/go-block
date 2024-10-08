@@ -1,4 +1,4 @@
-package utils
+package handlers
 
 import (
 	"log"
@@ -20,6 +20,6 @@ func DbExist() bool {
 
 func HandleErr(err error) {
 	if err != nil {
-		log.Panic("Error: ", err)
+		log.Panic("ERROR: ", err)
 	}
 }

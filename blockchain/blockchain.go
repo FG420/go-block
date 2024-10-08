@@ -1,12 +1,15 @@
 package blockchain
 
 import (
+	"bytes"
+	"crypto/ecdsa"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"runtime"
 
-	"github.com/FG420/go-block/utils"
+	"github.com/FG420/go-block/handlers"
 	"github.com/dgraph-io/badger"
 )
 
@@ -26,7 +29,7 @@ func (bc *BlockChain) AddBlock(txs []*Transaction) {
 
 	err := bc.Database.View(func(txn *badger.Txn) error {
 		item, err := txn.Get([]byte("lh"))
-		utils.HandleErr(err)
+		handlers.HandleErr(err)
 		err = item.Value(func(val []byte) error {
 			lastHash = append(lastHash, val...)
 			return nil
@@ -38,40 +41,13 @@ func (bc *BlockChain) AddBlock(txs []*Transaction) {
 
 	err = bc.Database.Update(func(txn *badger.Txn) error {
 		err = txn.Set(newBlock.Hash, newBlock.Serialize())
-		utils.HandleErr(err)
+		handlers.HandleErr(err)
 
 		err = txn.Set([]byte("lh"), newBlock.Hash)
 		bc.LastHash = newBlock.Hash
 
 		return nil
 	})
-}
-
-func InitBlockChain(addr string) *BlockChain {
-	var lastHash []byte
-	if utils.DbExist() {
-		fmt.Println("Blockchain already exists")
-		runtime.Goexit()
-	}
-
-	opt := badger.DefaultOptions(utils.DbPath)
-	db, err := badger.Open(opt)
-	utils.HandleErr(err)
-
-	err = db.Update(func(txn *badger.Txn) error {
-		cbtx := CoinbaseTx(addr, utils.GenesisData)
-		genesis := Genesis(cbtx)
-		log.Println("Genesis created")
-		err = txn.Set(genesis.Hash, genesis.Serialize())
-		utils.HandleErr(err)
-		err = txn.Set([]byte("lh"), genesis.Hash)
-
-		lastHash = genesis.Hash
-		return err
-	})
-	utils.HandleErr(err)
-	blockchain := BlockChain{lastHash, db}
-	return &blockchain
 }
 
 func (bc *BlockChain) Iterator() *BlockChainIterator {
@@ -85,7 +61,7 @@ func (iter *BlockChainIterator) Next() *Block {
 	var block *Block
 	err := iter.Database.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(iter.CurrentHash)
-		utils.HandleErr(err)
+		handlers.HandleErr(err)
 
 		err = item.Value(func(val []byte) error {
 			block = Deserialize(val)
@@ -94,40 +70,14 @@ func (iter *BlockChainIterator) Next() *Block {
 
 		return nil
 	})
-	utils.HandleErr(err)
+	handlers.HandleErr(err)
 
 	iter.CurrentHash = block.PrevHash
 	return block
 
 }
 
-func ContinueBlockChain(addr string) *BlockChain {
-	if !utils.DbExist() {
-		fmt.Println("No existring blockchain found, created one!")
-	}
-	var lastHash []byte
-
-	opt := badger.DefaultOptions(utils.DbPath)
-	db, err := badger.Open(opt)
-	utils.HandleErr(err)
-
-	err = db.Update(func(txn *badger.Txn) error {
-		item, err := txn.Get([]byte("lh"))
-		utils.HandleErr(err)
-
-		err = item.Value(func(val []byte) error {
-			lastHash = append(lastHash, val...)
-			return nil
-		})
-		return err
-	})
-	utils.HandleErr(err)
-
-	chain := BlockChain{lastHash, db}
-	return &chain
-}
-
-func (bc *BlockChain) FindUnspentTx(addr string) []Transaction {
+func (bc *BlockChain) FindUnspentTx(pubKeyHash []byte) []Transaction {
 	var unspentTxs []Transaction
 	spentTx0s := make(map[string][]int)
 	iter := bc.Iterator()
@@ -147,14 +97,14 @@ func (bc *BlockChain) FindUnspentTx(addr string) []Transaction {
 						}
 					}
 				}
-				if out.CanBeUnlocked(addr) {
+				if out.IsLockedWithKey(pubKeyHash) {
 					unspentTxs = append(unspentTxs, *tx)
 				}
 			}
 
 			if !tx.IsCoinbase() {
 				for _, in := range tx.Inputs {
-					if in.CanUnlock(addr) {
+					if in.UsesKey(pubKeyHash) {
 						inTxId := hex.EncodeToString(in.ID)
 						spentTx0s[inTxId] = append(spentTx0s[inTxId], in.Out)
 					}
@@ -170,14 +120,14 @@ func (bc *BlockChain) FindUnspentTx(addr string) []Transaction {
 	return unspentTxs
 }
 
-func (bc *BlockChain) FindUTxO(addr string) []TxOutput {
+func (bc *BlockChain) FindUTxO(pubKeyHash []byte) []TxOutput {
 	var UTxOs []TxOutput
 
-	unspentTxs := bc.FindUnspentTx(addr)
+	unspentTxs := bc.FindUnspentTx(pubKeyHash)
 
 	for _, tx := range unspentTxs {
 		for _, out := range tx.Outputs {
-			if out.CanBeUnlocked(addr) {
+			if out.IsLockedWithKey(pubKeyHash) {
 				UTxOs = append(UTxOs, out)
 			}
 		}
@@ -186,9 +136,9 @@ func (bc *BlockChain) FindUTxO(addr string) []TxOutput {
 	return UTxOs
 }
 
-func (bc *BlockChain) FindSpendableOutputs(addr string, amount int) (int, map[string][]int) {
+func (bc *BlockChain) FindSpendableOutputs(pubKeyHash []byte, amount int) (int, map[string][]int) {
 	unspentOuts := make(map[string][]int)
-	unspentTxs := bc.FindUnspentTx(addr)
+	unspentTxs := bc.FindUnspentTx(pubKeyHash)
 	accumulated := 0
 
 Work:
@@ -196,7 +146,7 @@ Work:
 		txId := hex.EncodeToString(tx.ID)
 
 		for outIdx, out := range tx.Outputs {
-			if out.CanBeUnlocked(addr) && accumulated < amount {
+			if out.IsLockedWithKey(pubKeyHash) && accumulated < amount {
 				accumulated += out.Value
 				unspentOuts[txId] = append(unspentOuts[txId], outIdx)
 
@@ -208,4 +158,101 @@ Work:
 	}
 
 	return accumulated, unspentOuts
+}
+
+func (bc *BlockChain) FincTransaction(id []byte) (Transaction, error) {
+	iter := bc.Iterator()
+
+	for {
+		block := iter.Next()
+
+		for _, tx := range block.Transactions {
+			if bytes.Compare(tx.ID, id) == 0 {
+				return *tx, nil
+			}
+		}
+
+		if len(block.PrevHash) == 0 {
+			break
+		}
+	}
+
+	return Transaction{}, errors.New("Transaction doesn't exist")
+}
+
+func (bc *BlockChain) SignTransaction(tx *Transaction, privKey ecdsa.PrivateKey) {
+	prevTxs := make(map[string]Transaction)
+
+	for _, in := range tx.Inputs {
+		prevTx, err := bc.FincTransaction(in.ID)
+		handlers.HandleErr(err)
+		prevTxs[hex.EncodeToString(prevTx.ID)] = prevTx
+	}
+
+	tx.Sign(privKey, prevTxs)
+}
+
+func (bc *BlockChain) VerifyTransaction(tx *Transaction) bool {
+	prevTxs := make(map[string]Transaction)
+
+	for _, in := range tx.Inputs {
+		prevTx, err := bc.FincTransaction(in.ID)
+		handlers.HandleErr(err)
+		prevTxs[hex.EncodeToString(prevTx.ID)] = prevTx
+	}
+
+	return tx.Verify(prevTxs)
+}
+
+func InitBlockChain(addr string) *BlockChain {
+	var lastHash []byte
+	if handlers.DbExist() {
+		fmt.Println("Blockchain already exists")
+		runtime.Goexit()
+	}
+
+	opt := badger.DefaultOptions(handlers.DbPath)
+	db, err := badger.Open(opt)
+	handlers.HandleErr(err)
+
+	err = db.Update(func(txn *badger.Txn) error {
+		cbtx := CoinbaseTx(addr, handlers.GenesisData)
+		genesis := Genesis(cbtx)
+		log.Println("Genesis created")
+		err = txn.Set(genesis.Hash, genesis.Serialize())
+		handlers.HandleErr(err)
+		err = txn.Set([]byte("lh"), genesis.Hash)
+
+		lastHash = genesis.Hash
+		return err
+	})
+	handlers.HandleErr(err)
+	blockchain := BlockChain{lastHash, db}
+	return &blockchain
+}
+
+func ContinueBlockChain(addr string) *BlockChain {
+	if !handlers.DbExist() {
+		fmt.Println("No existring blockchain found, created one!")
+	}
+	var lastHash []byte
+
+	opt := badger.DefaultOptions(handlers.DbPath)
+	db, err := badger.Open(opt)
+	handlers.HandleErr(err)
+
+	err = db.Update(func(txn *badger.Txn) error {
+		item, err := txn.Get([]byte("lh"))
+		handlers.HandleErr(err)
+
+		err = item.Value(func(val []byte) error {
+			lastHash = append(lastHash, val...)
+			return nil
+		})
+		return err
+	})
+	handlers.HandleErr(err)
+
+	chain := BlockChain{lastHash, db}
+	return &chain
 }

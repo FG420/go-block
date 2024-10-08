@@ -3,12 +3,13 @@ package cli
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"runtime"
 	"strconv"
 
 	"github.com/FG420/go-block/blockchain"
-	"github.com/FG420/go-block/utils"
+	"github.com/FG420/go-block/handlers"
 	"github.com/FG420/go-block/wallet"
 )
 
@@ -44,6 +45,10 @@ func (cli *CommandLine) printChain() {
 		pow := blockchain.NewProof(b)
 		fmt.Printf("PoW: %s\n\n", strconv.FormatBool(pow.Validate()))
 
+		for _, tx := range b.Transactions {
+			fmt.Println(tx)
+		}
+
 		if len(b.PrevHash) == 0 {
 			break
 		}
@@ -51,17 +56,27 @@ func (cli *CommandLine) printChain() {
 }
 
 func (cli *CommandLine) createBlockChain(addr string) {
+	if !wallet.ValidateAddress(addr) {
+		log.Panic("Address in not valid")
+	}
+
 	chain := blockchain.InitBlockChain(addr)
 	chain.Database.Close()
 	fmt.Println("Finished!")
 }
 
 func (cli *CommandLine) getBalance(addr string) {
+	if !wallet.ValidateAddress(addr) {
+		log.Panic("Address in not valid")
+	}
+
 	chain := blockchain.ContinueBlockChain(addr)
 	defer chain.Database.Close()
 
 	balance := 0
-	UTxOs := chain.FindUTxO(addr)
+	pubKeyHash := wallet.Base58Decode([]byte(addr))
+	pubKeyHash = pubKeyHash[1 : len(pubKeyHash)-4]
+	UTxOs := chain.FindUTxO(pubKeyHash)
 
 	for _, out := range UTxOs {
 		balance += out.Value
@@ -71,6 +86,10 @@ func (cli *CommandLine) getBalance(addr string) {
 }
 
 func (cli *CommandLine) send(from, to string, amount int) {
+	if !wallet.ValidateAddress(from) || !wallet.ValidateAddress(to) {
+		log.Panic("Address in not valid")
+	}
+
 	chain := blockchain.ContinueBlockChain(from)
 	defer chain.Database.Close()
 
@@ -118,22 +137,22 @@ func (cli *CommandLine) Run() {
 	switch os.Args[1] {
 	case "getbalance":
 		err := getBalanceCmd.Parse(os.Args[2:])
-		utils.HandleErr(err)
+		handlers.HandleErr(err)
 	case "createbc":
 		err := createBlockchainCmd.Parse(os.Args[2:])
-		utils.HandleErr(err)
+		handlers.HandleErr(err)
 	case "send":
 		err := sendCmd.Parse(os.Args[2:])
-		utils.HandleErr(err)
+		handlers.HandleErr(err)
 	case "createwallet":
 		err := createWalletCmd.Parse(os.Args[2:])
-		utils.HandleErr(err)
+		handlers.HandleErr(err)
 	case "listaddrs":
 		err := listAddrsCmd.Parse(os.Args[2:])
-		utils.HandleErr(err)
+		handlers.HandleErr(err)
 	case "print":
 		err := printChainCmd.Parse(os.Args[2:])
-		utils.HandleErr(err)
+		handlers.HandleErr(err)
 	default:
 		cli.printUsage()
 		runtime.Goexit()

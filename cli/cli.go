@@ -18,7 +18,7 @@ type CommandLine struct{}
 func (cli *CommandLine) printUsage() {
 	fmt.Println("Usage: ")
 	fmt.Println(" getbalance -address ADDRESS - get the balance of the address")
-	fmt.Println(" createblockchain -address ADDRESS - Creates a blockchain")
+	fmt.Println(" createbc -address ADDRESS - Creates a blockchain")
 	fmt.Println(" printchain - Prints the blocks in the chain")
 	fmt.Println(" send -from FROM -to TO -amount AMOUNT - Send amount from a user to another")
 	fmt.Println(" createwallet - Creates a new Wallet")
@@ -93,6 +93,7 @@ func (cli *CommandLine) send(from, to string, amount int) {
 	chain := blockchain.ContinueBlockChain(from)
 	defer chain.Database.Close()
 
+	log.Print("initialize new Transaction")
 	tx := blockchain.NewTransaction(from, to, amount, chain)
 
 	chain.AddBlock([]*blockchain.Transaction{tx})
@@ -113,8 +114,8 @@ func (cli *CommandLine) listAddrs() {
 	ws, _ := wallet.CreateWallets()
 	addrs := ws.GetAllAddresses()
 
-	for index, addr := range addrs {
-		fmt.Println(index, addr)
+	for _, addr := range addrs {
+		fmt.Println(addr)
 	}
 }
 
@@ -150,7 +151,7 @@ func (cli *CommandLine) Run() {
 	case "listaddrs":
 		err := listAddrsCmd.Parse(os.Args[2:])
 		handlers.HandleErr(err)
-	case "print":
+	case "printchain":
 		err := printChainCmd.Parse(os.Args[2:])
 		handlers.HandleErr(err)
 	default:
@@ -175,8 +176,8 @@ func (cli *CommandLine) Run() {
 	}
 
 	if sendCmd.Parsed() {
-		if *sendFrom == "" || *sendTo == "" || *sendAmount == 0 {
-			createBlockchainCmd.Usage()
+		if *sendFrom == "" || *sendTo == "" || *sendAmount <= 0 {
+			sendCmd.Usage()
 			runtime.Goexit()
 		}
 		cli.send(*sendFrom, *sendTo, *sendAmount)

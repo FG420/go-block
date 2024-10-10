@@ -160,7 +160,7 @@ Work:
 	return accumulated, unspentOuts
 }
 
-func (bc *BlockChain) FincTransaction(id []byte) (Transaction, error) {
+func (bc *BlockChain) FindTransaction(id []byte) (Transaction, error) {
 	iter := bc.Iterator()
 
 	for {
@@ -184,11 +184,11 @@ func (bc *BlockChain) SignTransaction(tx *Transaction, privKey ecdsa.PrivateKey)
 	prevTxs := make(map[string]Transaction)
 
 	for _, in := range tx.Inputs {
-		prevTx, err := bc.FincTransaction(in.ID)
+		prevTx, err := bc.FindTransaction(in.ID)
 		handlers.HandleErr(err)
 		prevTxs[hex.EncodeToString(prevTx.ID)] = prevTx
 	}
-
+	log.Println("transaction Signed")
 	tx.Sign(privKey, prevTxs)
 }
 
@@ -196,7 +196,7 @@ func (bc *BlockChain) VerifyTransaction(tx *Transaction) bool {
 	prevTxs := make(map[string]Transaction)
 
 	for _, in := range tx.Inputs {
-		prevTx, err := bc.FincTransaction(in.ID)
+		prevTx, err := bc.FindTransaction(in.ID)
 		handlers.HandleErr(err)
 		prevTxs[hex.EncodeToString(prevTx.ID)] = prevTx
 	}
@@ -233,7 +233,8 @@ func InitBlockChain(addr string) *BlockChain {
 
 func ContinueBlockChain(addr string) *BlockChain {
 	if !handlers.DbExist() {
-		fmt.Println("No existring blockchain found, created one!")
+		fmt.Println("No existring blockchain found, create one!")
+		runtime.Goexit()
 	}
 	var lastHash []byte
 

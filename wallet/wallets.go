@@ -3,9 +3,8 @@ package wallet
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
-
-	"github.com/FG420/go-block/handlers"
 )
 
 const walletFile = "./tmp/wallets.json"
@@ -45,7 +44,6 @@ func (ws *Wallets) AddWallet() string {
 	return addr
 }
 
-// Json Encoding
 func (ws *Wallets) LoadFile() error {
 	if _, err := os.Stat(walletFile); os.IsNotExist(err) {
 		return nil
@@ -53,58 +51,31 @@ func (ws *Wallets) LoadFile() error {
 
 	fileContent, err := os.ReadFile(walletFile)
 	if err != nil {
-		return err
+		log.Panic(err)
 	}
 
-	err = json.Unmarshal(fileContent, ws)
-	if err != nil {
-		return err
+	var temp struct {
+		Wallets map[string]*Wallet `json:"Wallets"`
 	}
+
+	err = json.Unmarshal(fileContent, &temp)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	ws.Wallets = temp.Wallets
 
 	return nil
 }
 
-func (ws *Wallets) SaveFile() {
+func (ws Wallets) SaveFile() {
 	jsonData, err := json.Marshal(ws)
-	handlers.HandleErr(err)
+	if err != nil {
+		log.Panic(err)
+	}
 
-	err = os.WriteFile(walletFile, jsonData, 0644)
-	handlers.HandleErr(err)
+	err = os.WriteFile(walletFile, jsonData, 0666)
+	if err != nil {
+		log.Panic(err)
+	}
 }
-
-// Gob Encoding
-// func (ws *Wallets) LoadFile() error {
-// 	if _, err := os.Stat(walletFile); os.IsNotExist(err) {
-// 		return nil
-// 	}
-
-// 	file, err := os.Open(walletFile)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer file.Close()
-
-// 	decoder := gob.NewDecoder(file)
-// 	err = decoder.Decode(ws)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	return nil
-// }
-
-// func (ws *Wallets) SaveFile() error {
-// 	file, err := os.OpenFile(walletFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer file.Close()
-
-// 	encoder := gob.NewEncoder(file)
-// 	err = encoder.Encode(ws)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	return nil
-// }

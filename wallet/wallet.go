@@ -6,6 +6,8 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/json"
+	"math/big"
 
 	"github.com/FG420/go-block/handlers"
 )
@@ -31,6 +33,52 @@ func (w *Wallet) Address() []byte {
 	// fmt.Printf("address: %x\n", addr)
 
 	return addr
+}
+
+func (w *Wallet) MarshalJSON() ([]byte, error) {
+	mapStringAny := map[string]any{
+		"PrivateKey": map[string]any{
+			"D": w.PrivateKey.D,
+			"PublicKey": map[string]any{
+				"X": w.PrivateKey.PublicKey.X,
+				"Y": w.PrivateKey.PublicKey.Y,
+			},
+			"Curve": w.PrivateKey.PublicKey.Curve.Params(),
+		},
+		"PublicKey": w.PublicKey,
+	}
+	return json.Marshal(mapStringAny)
+}
+
+func (w *Wallet) UnmarshalJSON(data []byte) error {
+	var aux struct {
+		PrivateKey struct {
+			D         *big.Int `json:"D"`
+			PublicKey struct {
+				X     *big.Int       `json:"X"`
+				Y     *big.Int       `json:"Y"`
+				Curve elliptic.Curve `json:"Curve"`
+			} `json:"PublicKey"`
+		} `json:"PrivateKey"`
+		PublicKey []byte `json:"PublicKey"`
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	w.PublicKey = aux.PublicKey
+
+	w.PrivateKey = &ecdsa.PrivateKey{
+		D: aux.PrivateKey.D,
+		PublicKey: ecdsa.PublicKey{
+			Curve: elliptic.P256(),
+			X:     aux.PrivateKey.PublicKey.X,
+			Y:     aux.PrivateKey.PublicKey.Y,
+		},
+	}
+
+	return nil
 }
 
 func ValidateAddress(addr string) bool {

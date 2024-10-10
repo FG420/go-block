@@ -8,7 +8,7 @@ import (
 
 func main() {
 	defer os.Exit(0)
-
+	// Mian()
 	cmd := cli.CommandLine{}
 	cmd.Run()
 

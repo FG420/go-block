@@ -2,7 +2,9 @@ package blockchain
 
 import (
 	"bytes"
+	"encoding/gob"
 
+	"github.com/FG420/go-block/handlers"
 	"github.com/FG420/go-block/wallet"
 )
 
@@ -17,6 +19,10 @@ type (
 	TxOutput struct {
 		Value      int
 		PubKeyHash []byte
+	}
+
+	TxOutputs struct {
+		Outputs []TxOutput
 	}
 )
 
@@ -33,6 +39,26 @@ func (out *TxOutput) Lock(addr []byte) {
 
 func (out *TxOutput) IsLockedWithKey(pubKeyHash []byte) bool {
 	return bytes.Compare(out.PubKeyHash, pubKeyHash) == 0
+}
+
+func (outs *TxOutputs) Serialize() []byte {
+	var buffer bytes.Buffer
+
+	enc := gob.NewEncoder(&buffer)
+	err := enc.Encode(outs)
+	handlers.HandleErr(err)
+
+	return buffer.Bytes()
+}
+
+func DeserializeOuts(data []byte) TxOutputs {
+	var outputs TxOutputs
+
+	dec := gob.NewDecoder(bytes.NewReader(data))
+	err := dec.Decode(&outputs)
+	handlers.HandleErr(err)
+
+	return outputs
 }
 
 func NewTxOutput(value int, addr string) *TxOutput {

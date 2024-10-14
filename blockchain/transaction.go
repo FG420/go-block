@@ -187,7 +187,7 @@ func CoinbaseTx(to, data string) *Transaction {
 	return &tx
 }
 
-func NewTransaction(from, to string, amount int, bc *BlockChain) *Transaction {
+func NewTransaction(from, to string, amount int, utxo *UTXOSet) *Transaction {
 	var inputs []TxInput
 	var outputs []TxOutput
 
@@ -196,7 +196,7 @@ func NewTransaction(from, to string, amount int, bc *BlockChain) *Transaction {
 	w := wallets.GetAddress(from)
 	pubKeyHash := wallet.PublicKeyHash(w.PublicKey)
 
-	acc, validOutputs := bc.FindSpendableOutputs(pubKeyHash, amount)
+	acc, validOutputs := utxo.FindSpendableOutputs(pubKeyHash, amount)
 	log.Print("ciao 2")
 
 	if acc < amount {
@@ -223,7 +223,7 @@ func NewTransaction(from, to string, amount int, bc *BlockChain) *Transaction {
 
 	tx := Transaction{nil, inputs, outputs}
 	tx.ID = tx.Hash()
-	bc.SignTransaction(&tx, *w.PrivateKey)
+	utxo.BlockChain.SignTransaction(&tx, *w.PrivateKey)
 
 	return &tx
 }

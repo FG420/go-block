@@ -46,17 +46,17 @@ func (tx *Transaction) String() string {
 	return strings.Join(lines, "\n")
 }
 
-func (tx *Transaction) SetID() {
-	var encoded bytes.Buffer
-	var hash [32]byte
+// func (tx *Transaction) SetID() {
+// 	var encoded bytes.Buffer
+// 	var hash [32]byte
 
-	encode := gob.NewEncoder(&encoded)
-	err := encode.Encode(tx)
-	handlers.HandleErr(err)
+// 	encode := gob.NewEncoder(&encoded)
+// 	err := encode.Encode(tx)
+// 	handlers.HandleErr(err)
 
-	hash = sha256.Sum256(encoded.Bytes())
-	tx.ID = hash[:]
-}
+// 	hash = sha256.Sum256(encoded.Bytes())
+// 	tx.ID = hash[:]
+// }
 
 func (tx *Transaction) IsCoinbase() bool {
 	return len(tx.Inputs) == 1 &&
@@ -78,8 +78,8 @@ func (tx *Transaction) Hash() []byte {
 	var hash [32]byte
 
 	txCopy := *tx
-	txCopy.ID = []byte{}
 	hash = sha256.Sum256(txCopy.Serialize())
+	txCopy.ID = hash[:]
 	return hash[:]
 }
 
@@ -175,14 +175,17 @@ func (tx *Transaction) Verify(prevTxs map[string]Transaction) bool {
 
 func CoinbaseTx(to, data string) *Transaction {
 	if data == "" {
-		data = fmt.Sprintf("Coins to %s", to)
+		randData := make([]byte, 24)
+		_, err := rand.Read(randData)
+		handlers.HandleErr(err)
+		data = fmt.Sprintf("%x", randData)
 	}
 
 	txin := TxInput{[]byte{}, -1, nil, []byte(data)}
 	txout := NewTxOutput(100, to)
 
 	tx := Transaction{nil, []TxInput{txin}, []TxOutput{*txout}}
-	tx.SetID()
+	tx.Hash()
 
 	return &tx
 }
@@ -197,7 +200,6 @@ func NewTransaction(from, to string, amount int, utxo *UTXOSet) *Transaction {
 	pubKeyHash := wallet.PublicKeyHash(w.PublicKey)
 
 	acc, validOutputs := utxo.FindSpendableOutputs(pubKeyHash, amount)
-	log.Print("ciao 2")
 
 	if acc < amount {
 		log.Panic("Error: not enough funds")
@@ -208,7 +210,6 @@ func NewTransaction(from, to string, amount int, utxo *UTXOSet) *Transaction {
 		handlers.HandleErr(err)
 
 		for _, out := range outs {
-			log.Print("ciao 3")
 
 			newInput := TxInput{txID, out, nil, w.PublicKey}
 			inputs = append(inputs, newInput)
@@ -219,7 +220,6 @@ func NewTransaction(from, to string, amount int, utxo *UTXOSet) *Transaction {
 	if acc > amount {
 		outputs = append(outputs, *NewTxOutput(acc-amount, from))
 	}
-	log.Print("ciao 4")
 
 	tx := Transaction{nil, inputs, outputs}
 	tx.ID = tx.Hash()

@@ -128,10 +128,8 @@ func (bc *BlockChain) FindTransaction(id []byte) (Transaction, error) {
 	for {
 		block := iter.Next()
 		for _, tx := range block.Transactions {
-			for _, in := range tx.Inputs {
-				if bytes.Compare(id, in.ID) == 1 {
-					return *tx, nil
-				}
+			if bytes.Compare(id, tx.ID) == 0 {
+				return *tx, nil
 			}
 		}
 
@@ -146,7 +144,9 @@ func (bc *BlockChain) FindTransaction(id []byte) (Transaction, error) {
 func (bc *BlockChain) SignTransaction(tx *Transaction, privKey ecdsa.PrivateKey) {
 	prevTxs := make(map[string]Transaction)
 
+	log.Println(tx)
 	for _, in := range tx.Inputs {
+		log.Println(in.ID)
 		prevTx, err := bc.FindTransaction(in.ID)
 		handlers.HandleErr(err)
 		prevTxs[hex.EncodeToString(prevTx.ID)] = prevTx

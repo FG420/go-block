@@ -17,19 +17,6 @@ type ProofOfWork struct {
 	Target *big.Int
 }
 
-func (pow *ProofOfWork) InitData(nonce int) []byte {
-	data := bytes.Join(
-		[][]byte{
-			pow.Block.PrevHash,
-			pow.Block.HashTransactions(),
-			ToHex(int64(nonce)),
-			ToHex(Difficulty),
-		}, []byte{},
-	)
-
-	return data
-}
-
 func (pow *ProofOfWork) Run() (int, []byte) {
 	var intHash big.Int
 	var hash [32]byte
@@ -65,14 +52,17 @@ func (pow *ProofOfWork) Validate() bool {
 	return intHash.Cmp(pow.Target) == -1
 }
 
-func ToHex(num int64) []byte {
-	buff := new(bytes.Buffer)
-	err := binary.Write(buff, binary.BigEndian, num)
-	if err != nil {
-		log.Panic(err)
-	}
+func (pow *ProofOfWork) InitData(nonce int) []byte {
+	data := bytes.Join(
+		[][]byte{
+			pow.Block.PrevHash,
+			pow.Block.HashTransactions(),
+			ToHex(int64(nonce)),
+			ToHex(Difficulty),
+		}, []byte{},
+	)
 
-	return buff.Bytes()
+	return data
 }
 
 func NewProof(b *Block) *ProofOfWork {
@@ -82,4 +72,14 @@ func NewProof(b *Block) *ProofOfWork {
 	pow := &ProofOfWork{b, target}
 
 	return pow
+}
+
+func ToHex(num int64) []byte {
+	buff := new(bytes.Buffer)
+	err := binary.Write(buff, binary.BigEndian, num)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return buff.Bytes()
 }

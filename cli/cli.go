@@ -17,8 +17,8 @@ type CommandLine struct{}
 
 func (cli *CommandLine) printUsage() {
 	fmt.Println("Usage: ")
-	fmt.Println(" getbalance -address ADDRESS - get the balance of the address")
-	fmt.Println(" createbc -address ADDRESS - Creates a blockchain")
+	fmt.Println(" getbalance -addr ADDRESS - get the balance of the address")
+	fmt.Println(" createbc -addr ADDRESS - Creates a blockchain")
 	fmt.Println(" printchain - Prints the blocks in the chain")
 	fmt.Println(" send -from FROM -to TO -amount AMOUNT - Send amount from a user to another")
 	fmt.Println(" createwallet - Creates a new Wallet")
@@ -63,8 +63,8 @@ func (cli *CommandLine) createBlockChain(addr string) {
 
 	chain := blockchain.InitBlockChain(addr)
 	utxoSet := blockchain.UTXOSet{BlockChain: chain}
-	chain.Database.Close()
 	utxoSet.Reindex()
+	chain.Database.Close()
 	fmt.Println("Finished!")
 }
 
@@ -100,7 +100,8 @@ func (cli *CommandLine) send(from, to string, amount int) {
 
 	log.Print("initialize new Transaction")
 	tx := blockchain.NewTransaction(from, to, amount, &utxoSet)
-	block := chain.AddBlock([]*blockchain.Transaction{tx})
+	cbTx := blockchain.CoinbaseTx(from, "")
+	block := chain.AddBlock([]*blockchain.Transaction{cbTx, tx})
 
 	utxoSet.Update(block)
 	fmt.Println("Success!")
@@ -146,8 +147,8 @@ func (cli *CommandLine) Run() {
 	listAddrsCmd := flag.NewFlagSet("listaddrs", flag.ExitOnError)
 	reindexUTXOCmd := flag.NewFlagSet("reindexutxo", flag.ExitOnError)
 
-	getBalanceAddress := getBalanceCmd.String("address", "", "The address")
-	createBlockchainAddress := createBlockchainCmd.String("address", "", "The created blockchain")
+	getBalanceAddress := getBalanceCmd.String("addr", "", "The address")
+	createBlockchainAddress := createBlockchainCmd.String("addr", "", "The created blockchain")
 	sendFrom := sendCmd.String("from", "", "source wallet address")
 	sendTo := sendCmd.String("to", "", "Destination wallet address")
 	sendAmount := sendCmd.Int("amount", 0, "Amount sent")

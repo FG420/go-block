@@ -13,6 +13,7 @@ require (
 	github.com/labstack/gommon v0.4.2
 	github.com/mr-tron/base58 v1.2.0
 	github.com/pkg/errors v0.8.1 // indirect
+	github.com/vrecan/death/v3 v3.0.3
 	golang.org/x/crypto v0.28.0
 	golang.org/x/net v0.21.0 // indirect
 	golang.org/x/sys v0.26.0 // indirect

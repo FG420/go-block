@@ -3,6 +3,7 @@ package blockchain
 import (
 	"bytes"
 	"crypto/ecdsa"
+	"encoding/gob"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -13,32 +14,88 @@ import (
 	"github.com/dgraph-io/badger"
 )
 
-type (
-	BlockChain struct {
-		LastHash []byte
-		Database *badger.DB
-	}
-	BlockChainIterator struct {
-		CurrentHash []byte
-		Database    *badger.DB
-	}
-)
+type BlockChain struct {
+	LastHash []byte
+	Database *badger.DB
+}
 
-func (bc *BlockChain) AddBlock(txs []*Transaction) *Block {
+func (bc *BlockChain) AddBlock(block *Block) {
 	var lastHash []byte
+	var lastBlockData []byte
+
+	err := bc.Database.Update(func(txn *badger.Txn) error {
+		if _, err := txn.Get(block.Hash); err == nil {
+			return nil
+		}
+
+		blockData := block.Serialize()
+		err := txn.Set(block.Hash, blockData)
+		handlers.HandleErr(err)
+
+		item, err := txn.Get([]byte("lh"))
+		item.Value(func(val []byte) error {
+			lastHash = val
+			return nil
+		})
+
+		item, err = txn.Get([]byte(lastHash))
+		handlers.HandleErr(err)
+
+		item.Value(func(val []byte) error {
+			lastBlockData = val
+			return nil
+		})
+
+		lastBlock := Deserialize(lastBlockData)
+
+		if block.Height > lastBlock.Height {
+			err = txn.Set([]byte("lh"), block.Hash)
+			handlers.HandleErr(err)
+			bc.LastHash = block.Hash
+		}
+
+		return nil
+	})
+	handlers.HandleErr(err)
+}
+
+func (bc *BlockChain) MineBlock(txs []*Transaction) *Block {
+	var lastHash []byte
+	var lastBlockData []byte
+	var lastHeight int
+
+	for _, tx := range txs {
+		if bc.VerifyTransaction(tx) != true {
+			log.Panic("Invalid Transaction")
+		}
+	}
 
 	err := bc.Database.View(func(txn *badger.Txn) error {
 		item, err := txn.Get([]byte("lh"))
 		handlers.HandleErr(err)
+
 		err = item.Value(func(val []byte) error {
-			lastHash = append(lastHash, val...)
-			return nil
+			lastHash = val
+			return err
 		})
-		return nil
+		handlers.HandleErr(err)
+
+		item, err = txn.Get([]byte(lastHash))
+		handlers.HandleErr(err)
+		err = item.Value(func(val []byte) error {
+			lastBlockData = val
+			return err
+		})
+		handlers.HandleErr(err)
+
+		lastBlock := Deserialize(lastBlockData)
+		lastHeight = lastBlock.Height
+
+		return err
 	})
 	handlers.HandleErr(err)
 
-	newBlock := CreateBlock(txs, lastHash)
+	newBlock := CreateBlock(txs, lastHash, lastHeight+1)
 
 	err = bc.Database.Update(func(txn *badger.Txn) error {
 		err = txn.Set(newBlock.Hash, newBlock.Serialize())
@@ -54,31 +111,74 @@ func (bc *BlockChain) AddBlock(txs []*Transaction) *Block {
 	return newBlock
 }
 
-func (bc *BlockChain) Iterator() *BlockChainIterator {
-	iter := &BlockChainIterator{
-		bc.LastHash, bc.Database,
+func (bc *BlockChain) GetBlock(blockHash []byte) (*Block, error) {
+	var block Block
+	var blockData []byte
+
+	err := bc.Database.View(func(txn *badger.Txn) error {
+		if item, err := txn.Get(blockHash); err != nil {
+			return errors.New("Block not found")
+		} else {
+			item.Value(func(val []byte) error {
+				blockData = val
+				return nil
+			})
+
+			block = *Deserialize(blockData)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return &block, err
 	}
-	return iter
+
+	return &block, nil
 }
 
-func (iter *BlockChainIterator) Next() *Block {
-	var block *Block
-	err := iter.Database.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(iter.CurrentHash)
-		handlers.HandleErr(err)
+func (bc *BlockChain) GetBlockHashes() [][]byte {
+	var blocks [][]byte
 
-		err = item.Value(func(val []byte) error {
-			block = Deserialize(val)
+	iter := bc.Iterator()
+
+	for {
+		block := iter.Next()
+		blocks = append(blocks, block.Hash)
+		if len(block.PrevHash) == 0 {
+			break
+		}
+	}
+
+	return blocks
+}
+
+func (bc *BlockChain) GetBestHeight() int {
+	var lastBlock Block
+	var lastHash []byte
+	var lastBlockData []byte
+
+	err := bc.Database.View(func(txn *badger.Txn) error {
+		item, err := txn.Get([]byte("lh"))
+		handlers.HandleErr(err)
+		item.Value(func(val []byte) error {
+			lastHash = val
 			return nil
 		})
+
+		item, err = txn.Get(lastHash)
+		handlers.HandleErr(err)
+		item.Value(func(val []byte) error {
+			lastBlockData = val
+			return nil
+		})
+
+		lastBlock = *Deserialize(lastBlockData)
 
 		return nil
 	})
 	handlers.HandleErr(err)
 
-	iter.CurrentHash = block.PrevHash
-	return block
-
+	return lastBlock.Height
 }
 
 func (bc *BlockChain) FindUTxO() map[string]TxOutputs {
@@ -124,11 +224,12 @@ func (bc *BlockChain) FindUTxO() map[string]TxOutputs {
 
 func (bc *BlockChain) FindTransaction(id []byte) (Transaction, error) {
 	iter := bc.Iterator()
+	log.Println(" id ->", id)
 
 	for {
 		block := iter.Next()
 		for _, tx := range block.Transactions {
-			if bytes.Compare(id, tx.ID) == 0 {
+			if bytes.Compare(tx.ID, id) == 0 {
 				return *tx, nil
 			}
 		}
@@ -144,7 +245,6 @@ func (bc *BlockChain) FindTransaction(id []byte) (Transaction, error) {
 func (bc *BlockChain) SignTransaction(tx *Transaction, privKey ecdsa.PrivateKey) {
 	prevTxs := make(map[string]Transaction)
 
-	log.Println(tx)
 	for _, in := range tx.Inputs {
 		log.Println(in.ID)
 		prevTx, err := bc.FindTransaction(in.ID)
@@ -171,17 +271,32 @@ func (bc *BlockChain) VerifyTransaction(tx *Transaction) bool {
 	return tx.Verify(prevTxs)
 }
 
-func InitBlockChain(addr string) *BlockChain {
-	var lastHash []byte
-	if handlers.DbExist() {
+func DeserializeTransaction(data []byte) Transaction {
+	var tx Transaction
+
+	dec := gob.NewDecoder(bytes.NewReader(data))
+	err := dec.Decode(&tx)
+	handlers.HandleErr(err)
+
+	return tx
+}
+
+func InitBlockChain(addr, nodeId string) *BlockChain {
+	path := fmt.Sprintf(handlers.DbPath, nodeId)
+
+	if handlers.DbExist(path) {
 		fmt.Println("Blockchain already exists")
 		runtime.Goexit()
 	}
 
 	opt := badger.DefaultOptions(handlers.DbPath)
-	db, err := badger.Open(opt)
+	opt.Dir = path
+	opt.ValueDir = path
+
+	db, err := handlers.OpenDB(path, opt)
 	handlers.HandleErr(err)
 
+	var lastHash []byte
 	err = db.Update(func(txn *badger.Txn) error {
 		cbtx := CoinbaseTx(addr, handlers.GenesisData)
 		genesis := Genesis(cbtx)
@@ -195,20 +310,26 @@ func InitBlockChain(addr string) *BlockChain {
 	})
 	handlers.HandleErr(err)
 	blockchain := BlockChain{lastHash, db}
+	log.Println("Path -> ", path)
+
 	return &blockchain
 }
 
-func ContinueBlockChain(addr string) *BlockChain {
-	if !handlers.DbExist() {
+func ContinueBlockChain(nodeId string) *BlockChain {
+	path := fmt.Sprintf(handlers.DbPath, nodeId)
+	if !handlers.DbExist(path) {
 		fmt.Println("No existring blockchain found, create one!")
 		runtime.Goexit()
 	}
-	var lastHash []byte
 
 	opt := badger.DefaultOptions(handlers.DbPath)
-	db, err := badger.Open(opt)
+	opt.Dir = path
+	opt.ValueDir = path
+
+	db, err := handlers.OpenDB(path, opt)
 	handlers.HandleErr(err)
 
+	var lastHash []byte
 	err = db.Update(func(txn *badger.Txn) error {
 		item, err := txn.Get([]byte("lh"))
 		handlers.HandleErr(err)

@@ -7,17 +7,19 @@ import (
 	"os"
 )
 
-const walletFile = "./tmp/wallets.json"
+const walletFile = "./tmp/wallets_%s.json"
+
+// const walletFile = "./tmp/wallets_%s.data"
 
 type Wallets struct {
 	Wallets map[string]*Wallet
 }
 
-func CreateWallets() (*Wallets, error) {
+func CreateWallets(nodeId string) (*Wallets, error) {
 	var wallets Wallets
 
 	wallets.Wallets = make(map[string]*Wallet)
-	err := wallets.LoadFile()
+	err := wallets.LoadFile(nodeId)
 
 	return &wallets, err
 }
@@ -44,7 +46,9 @@ func (ws *Wallets) AddWallet() string {
 	return addr
 }
 
-func (ws *Wallets) LoadFile() error {
+// Json Save & Load File
+func (ws *Wallets) LoadFile(nodeId string) error {
+	walletFile := fmt.Sprintf(walletFile, nodeId)
 	if _, err := os.Stat(walletFile); os.IsNotExist(err) {
 		return nil
 	}
@@ -68,7 +72,8 @@ func (ws *Wallets) LoadFile() error {
 	return nil
 }
 
-func (ws Wallets) SaveFile() {
+func (ws Wallets) SaveFile(nodeId string) {
+	walletFile := fmt.Sprintf(walletFile, nodeId)
 	jsonData, err := json.Marshal(ws)
 	if err != nil {
 		log.Panic(err)
@@ -79,3 +84,37 @@ func (ws Wallets) SaveFile() {
 		log.Panic(err)
 	}
 }
+
+// Bog Save & Load File
+// func (ws *Wallets) LoadFile(nodeId string) error {
+// 	walletFile := fmt.Sprintf(walletFile, nodeId)
+// 	if _, err := os.Stat(walletFile); os.IsNotExist(err) {
+// 		return nil
+// 	}
+
+// 	var wallets Wallets
+// 	fileContent, err := os.ReadFile(walletFile)
+// 	handlers.HandleErr(err)
+
+// 	gob.Register(elliptic.P256())
+// 	dec := gob.NewDecoder(bytes.NewReader(fileContent))
+// 	err = dec.Decode(&wallets)
+// 	handlers.HandleErr(err)
+
+// 	ws.Wallets = wallets.Wallets
+// 	return nil
+// }
+
+// func (ws Wallets) SaveFile(nodeId string) {
+// 	var content bytes.Buffer
+// 	walletFile := fmt.Sprintf(walletFile, nodeId)
+
+// 	gob.Register(elliptic.P256())
+
+// 	enc := gob.NewEncoder(&content)
+// 	err := enc.Encode(ws)
+// 	handlers.HandleErr(err)
+
+// 	err = os.WriteFile(walletFile, content.Bytes(), 0644)
+// 	handlers.HandleErr(err)
+// }
